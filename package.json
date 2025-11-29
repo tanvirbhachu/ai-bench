@@ -5,7 +5,8 @@
 	"private": true,
 	"scripts": {
 		"start": "bun run index.tsx",
-		"combine": "bun run combine-runs.ts"
+		"combine": "bun run combine-runs.ts",
+		"clean": "bun run clean.ts"
 	},
 	"dependencies": {
 		"@openrouter/ai-sdk-provider": "^0.4.3",

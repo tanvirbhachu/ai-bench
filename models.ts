@@ -6,7 +6,7 @@
 // =============================================================================
 
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import type { BenchmarkModel } from "./index.ts";
+import type { BenchmarkModel } from "./index.tsx";
 
 const openrouter = createOpenRouter({
 	apiKey: process.env.OPENROUTER_API_KEY,
@@ -25,15 +25,16 @@ export const judgeModel: BenchmarkModel = {
 	reasoning: false,
 };
 
+// =============================================================================
+// Models
+// =============================================================================
+// Add your own models here. The entire test suite will be run against each model.
+// You can add as many models as you want but we recommend keeping it to a reasonable number.
+
 export const models: BenchmarkModel[] = [
 	{
-		name: "x-ai/grok-4.1-fast:free",
-		llm: openrouter("x-ai/grok-4.1-fast:free"),
-		reasoning: false,
-	},
-	{
-		name: "z-ai/glm-4.5-air:free",
-		llm: openrouter("z-ai/glm-4.5-air:free"),
-		reasoning: false,
+		name: "openai/gpt-5-nano",
+		llm: openrouter("openai/gpt-5-nano"),
+		reasoning: true,
 	},
 ];

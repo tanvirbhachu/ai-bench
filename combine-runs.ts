@@ -8,7 +8,7 @@
 import { readdir, readFile, writeFile, mkdir } from "fs/promises";
 import { join, resolve } from "path";
 import { existsSync } from "fs";
-import { RunResultSchema, type RunResult } from "./index.ts";
+import { RunResultSchema, type RunResult } from "./index.tsx";
 
 // Results directory where summaries are saved
 const RESULTS_DIR = "results";

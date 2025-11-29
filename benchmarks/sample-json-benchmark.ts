@@ -6,7 +6,7 @@
 // =============================================================================
 
 import { judgeModel } from "../models.ts";
-import type { Benchmark, BenchmarkTest } from "../index.ts";
+import type { Benchmark, BenchmarkTest } from "../index.tsx";
 import z from "zod/v3";
 
 const tests: BenchmarkTest[] = [

@@ -180,3 +180,5 @@ The aggregated summary includes:
 - Per-model summaries with averages
 - Per-test summaries with success rates
 - Complete run history
+
+This summary report can be used in [this visualization site I quickly made](https://ai-bench.tanvirbhachu.dev/) so you can quickly understand the data.

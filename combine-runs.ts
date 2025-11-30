@@ -11,6 +11,13 @@ import { existsSync } from "fs";
 import { RunResultSchema, type RunResult } from "./index.tsx";
 import { OUTPUT_DIRECTORY, RUNS_DIRECTORY } from "./constants.ts";
 
+type TokenUsageSummary = {
+	input: number;
+	output: number;
+	reasoning: number;
+	total: number;
+};
+
 export type TestSummary = {
 	testName: string;
 	totalRuns: number;
@@ -18,12 +25,11 @@ export type TestSummary = {
 	failedRuns: number;
 	successRate: number;
 	avgDurationMs: number;
-	avgTokenUsage: {
-		input: number;
-		output: number;
-		reasoning: number;
-		total: number;
-	};
+	avgTokenUsage: TokenUsageSummary;
+	/** Average judge model duration (only for text tests) */
+	avgJudgeDurationMs?: number;
+	/** Average judge model token usage (only for text tests) */
+	avgJudgeTokenUsage?: TokenUsageSummary;
 	runs: RunResult[];
 };
 
@@ -36,18 +42,16 @@ export type ModelSummary = {
 	successRate: number;
 	totalDurationMs: number;
 	avgDurationMs: number;
-	totalTokenUsage: {
-		input: number;
-		output: number;
-		reasoning: number;
-		total: number;
-	};
-	avgTokenUsage: {
-		input: number;
-		output: number;
-		reasoning: number;
-		total: number;
-	};
+	totalTokenUsage: TokenUsageSummary;
+	avgTokenUsage: TokenUsageSummary;
+	/** Total judge model duration (only for text tests) */
+	totalJudgeDurationMs?: number;
+	/** Average judge model duration (only for text tests) */
+	avgJudgeDurationMs?: number;
+	/** Total judge model token usage (only for text tests) */
+	totalJudgeTokenUsage?: TokenUsageSummary;
+	/** Average judge model token usage (only for text tests) */
+	avgJudgeTokenUsage?: TokenUsageSummary;
 	testSummaries: TestSummary[];
 };
 
@@ -59,6 +63,10 @@ export type BenchmarkSummary = {
 	overallSuccessRate: number;
 	totalDurationMs: number;
 	totalTokens: number;
+	/** Total judge model duration (only for text benchmarks) */
+	totalJudgeDurationMs?: number;
+	/** Total judge model tokens (only for text benchmarks) */
+	totalJudgeTokens?: number;
 	modelSummaries: ModelSummary[];
 };
 
@@ -105,6 +113,47 @@ function computeTestSummary(testName: string, runs: RunResult[]): TestSummary {
 		total: totalRuns > 0 ? totalTokens.total / totalRuns : 0,
 	};
 
+	// Calculate judge metrics (only for runs that have judge data)
+	const runsWithJudge = runs.filter((r) => r.judgeDurationMs !== undefined);
+	const hasJudgeMetrics = runsWithJudge.length > 0;
+
+	let avgJudgeDurationMs: number | undefined;
+	let avgJudgeTokenUsage: TokenUsageSummary | undefined;
+
+	if (hasJudgeMetrics) {
+		const totalJudgeDuration = runsWithJudge.reduce(
+			(sum, r) => sum + (r.judgeDurationMs ?? 0),
+			0,
+		);
+		avgJudgeDurationMs = totalJudgeDuration / runsWithJudge.length;
+
+		const totalJudgeTokens = {
+			input: runsWithJudge.reduce(
+				(sum, r) => sum + (r.judgeTokenUsage?.input ?? 0),
+				0,
+			),
+			output: runsWithJudge.reduce(
+				(sum, r) => sum + (r.judgeTokenUsage?.output ?? 0),
+				0,
+			),
+			reasoning: runsWithJudge.reduce(
+				(sum, r) => sum + (r.judgeTokenUsage?.reasoning ?? 0),
+				0,
+			),
+			total: runsWithJudge.reduce(
+				(sum, r) => sum + (r.judgeTokenUsage?.total ?? 0),
+				0,
+			),
+		};
+
+		avgJudgeTokenUsage = {
+			input: totalJudgeTokens.input / runsWithJudge.length,
+			output: totalJudgeTokens.output / runsWithJudge.length,
+			reasoning: totalJudgeTokens.reasoning / runsWithJudge.length,
+			total: totalJudgeTokens.total / runsWithJudge.length,
+		};
+	}
+
 	return {
 		testName,
 		totalRuns,
@@ -113,6 +162,10 @@ function computeTestSummary(testName: string, runs: RunResult[]): TestSummary {
 		successRate,
 		avgDurationMs,
 		avgTokenUsage,
+		...(hasJudgeMetrics && {
+			avgJudgeDurationMs,
+			avgJudgeTokenUsage,
+		}),
 		runs,
 	};
 }
@@ -161,6 +214,49 @@ function computeModelSummary(
 		total: totalRuns > 0 ? totalTokenUsage.total / totalRuns : 0,
 	};
 
+	// Calculate judge metrics (only for runs that have judge data)
+	const runsWithJudge = runs.filter((r) => r.judgeDurationMs !== undefined);
+	const hasJudgeMetrics = runsWithJudge.length > 0;
+
+	let totalJudgeDurationMs: number | undefined;
+	let avgJudgeDurationMs: number | undefined;
+	let totalJudgeTokenUsage: TokenUsageSummary | undefined;
+	let avgJudgeTokenUsage: TokenUsageSummary | undefined;
+
+	if (hasJudgeMetrics) {
+		totalJudgeDurationMs = runsWithJudge.reduce(
+			(sum, r) => sum + (r.judgeDurationMs ?? 0),
+			0,
+		);
+		avgJudgeDurationMs = totalJudgeDurationMs / runsWithJudge.length;
+
+		totalJudgeTokenUsage = {
+			input: runsWithJudge.reduce(
+				(sum, r) => sum + (r.judgeTokenUsage?.input ?? 0),
+				0,
+			),
+			output: runsWithJudge.reduce(
+				(sum, r) => sum + (r.judgeTokenUsage?.output ?? 0),
+				0,
+			),
+			reasoning: runsWithJudge.reduce(
+				(sum, r) => sum + (r.judgeTokenUsage?.reasoning ?? 0),
+				0,
+			),
+			total: runsWithJudge.reduce(
+				(sum, r) => sum + (r.judgeTokenUsage?.total ?? 0),
+				0,
+			),
+		};
+
+		avgJudgeTokenUsage = {
+			input: totalJudgeTokenUsage.input / runsWithJudge.length,
+			output: totalJudgeTokenUsage.output / runsWithJudge.length,
+			reasoning: totalJudgeTokenUsage.reasoning / runsWithJudge.length,
+			total: totalJudgeTokenUsage.total / runsWithJudge.length,
+		};
+	}
+
 	return {
 		modelName,
 		totalTests: runsByTest.size,
@@ -172,6 +268,12 @@ function computeModelSummary(
 		avgDurationMs,
 		totalTokenUsage,
 		avgTokenUsage,
+		...(hasJudgeMetrics && {
+			totalJudgeDurationMs,
+			avgJudgeDurationMs,
+			totalJudgeTokenUsage,
+			avgJudgeTokenUsage,
+		}),
 		testSummaries,
 	};
 }
@@ -278,6 +380,26 @@ export async function combineRunDir(
 		0,
 	);
 
+	// Compute overall judge metrics
+	const modelsWithJudge = modelSummaries.filter(
+		(m) => m.totalJudgeDurationMs !== undefined,
+	);
+	const hasJudgeMetrics = modelsWithJudge.length > 0;
+
+	let totalJudgeDurationMs: number | undefined;
+	let totalJudgeTokens: number | undefined;
+
+	if (hasJudgeMetrics) {
+		totalJudgeDurationMs = modelsWithJudge.reduce(
+			(sum, m) => sum + (m.totalJudgeDurationMs ?? 0),
+			0,
+		);
+		totalJudgeTokens = modelsWithJudge.reduce(
+			(sum, m) => sum + (m.totalJudgeTokenUsage?.total ?? 0),
+			0,
+		);
+	}
+
 	// Count unique tests across all models
 	const uniqueTests = new Set<string>();
 	for (const model of modelSummaries) {
@@ -294,6 +416,10 @@ export async function combineRunDir(
 		overallSuccessRate,
 		totalDurationMs,
 		totalTokens,
+		...(hasJudgeMetrics && {
+			totalJudgeDurationMs,
+			totalJudgeTokens,
+		}),
 		modelSummaries,
 	};
 

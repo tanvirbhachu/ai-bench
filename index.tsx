@@ -79,7 +79,7 @@ export type Benchmark = {
 export type TokenUsage = {
 	input: number;
 	output: number;
-	reasoning?: number;
+	reasoning: number;
 	total: number;
 };
 
@@ -91,13 +91,30 @@ export type RunResult = {
 	modelName: string;
 	runIndex: number;
 	timestamp: string;
+	type: "text" | "structured-output";
+	prompt: string;
+	expectedAnswer?: string;
 	success: boolean;
 	reason: string;
 	durationMs: number;
 	tokenUsage: TokenUsage;
 	rawOutput: unknown;
 	judgeOutput?: unknown;
+	/** Duration of judge model evaluation (only for text tests) */
+	judgeDurationMs?: number;
+	/** Token usage of judge model (only for text tests) */
+	judgeTokenUsage?: TokenUsage;
 };
+
+/**
+ * Zod schema for TokenUsage (reusable)
+ */
+const TokenUsageSchema = z.object({
+	input: z.number(),
+	output: z.number(),
+	reasoning: z.number().optional(),
+	total: z.number(),
+});
 
 /**
  * Zod schema for validating RunResult when reading from disk
@@ -107,17 +124,17 @@ export const RunResultSchema = z.object({
 	modelName: z.string(),
 	runIndex: z.number(),
 	timestamp: z.string(),
+	type: z.enum(["text", "structured-output"]),
+	prompt: z.string(),
+	expectedAnswer: z.string().optional(),
 	success: z.boolean(),
 	reason: z.string(),
 	durationMs: z.number(),
-	tokenUsage: z.object({
-		input: z.number(),
-		output: z.number(),
-		reasoning: z.number().optional(),
-		total: z.number(),
-	}),
+	tokenUsage: TokenUsageSchema,
 	rawOutput: z.unknown(),
 	judgeOutput: z.unknown().optional(),
+	judgeDurationMs: z.number().optional(),
+	judgeTokenUsage: TokenUsageSchema.optional(),
 });
 
 /**
@@ -327,8 +344,12 @@ async function main() {
 				const benchmark = await loadBenchmark(parsedOptions.benchmark);
 				const models = loadModels(parsedOptions.model);
 
+				const hasTextTests = benchmark.tests.some((test) => test.type === "text");
+
 				// Verify judge model supports object generation before starting
-				await verifyJudgeModelCapability(benchmark.judgeModel);
+				if (hasTextTests) {
+					await verifyJudgeModelCapability(benchmark.judgeModel);
+				}
 
 				// Calculate total tests (tests * models)
 				const totalTests = benchmark.tests.length * models.length;

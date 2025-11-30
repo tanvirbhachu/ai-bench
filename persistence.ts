@@ -217,10 +217,13 @@ export class BenchmarkRunner extends EventEmitter {
 				modelName: model.name,
 				runIndex,
 				timestamp: new Date().toISOString(),
+				type: test.type,
+				prompt: test.prompt,
+				expectedAnswer: test.type === "text" ? test.expectedAnswer : undefined,
 				success: false,
 				reason: `Error: ${err.message}`,
 				durationMs: Date.now() - startTime,
-				tokenUsage: { input: 0, output: 0, total: 0 },
+				tokenUsage: { input: 0, output: 0, total: 0, reasoning: 0 },
 				rawOutput: JSON.stringify(err, null, 2),
 			};
 			await saveRunResult(this.runDir, failedResult);
@@ -246,13 +249,16 @@ export class BenchmarkRunner extends EventEmitter {
 			abortSignal: AbortSignal.timeout(this.timeoutSeconds * 1000),
 		});
 
-		const durationMs = Date.now() - startTime;
+		const inputTokens = response.usage?.promptTokens ?? 0;
+		const outputTokens = response.usage?.completionTokens ?? 0;
+		const totalTokens = response.usage?.totalTokens ?? 0;
+		const reasoningTokens = totalTokens - inputTokens - outputTokens;
+
 		const tokenUsage: TokenUsage = {
-			input: response.usage?.promptTokens ?? 0,
-			output: response.usage?.completionTokens ?? 0,
-			total:
-				(response.usage?.promptTokens ?? 0) +
-				(response.usage?.completionTokens ?? 0),
+			input: inputTokens,
+			output: outputTokens,
+			total: totalTokens,
+			reasoning: reasoningTokens,
 		};
 
 		// Use judge model to evaluate the response
@@ -262,20 +268,25 @@ export class BenchmarkRunner extends EventEmitter {
 			model.name,
 		);
 
-		// Add judge tokens to total
-		tokenUsage.total += judgeResult.tokensUsed;
+		// Total duration includes both model and judge time
+		const totalDurationMs = Date.now() - startTime;
 
 		return {
 			testName: test.name,
 			modelName: model.name,
 			runIndex,
 			timestamp: new Date().toISOString(),
+			type: "text",
+			prompt: test.prompt,
+			expectedAnswer: test.expectedAnswer,
 			success: judgeResult.success,
 			reason: judgeResult.reason,
-			durationMs,
+			durationMs: totalDurationMs,
 			tokenUsage,
 			rawOutput: response.text,
 			judgeOutput: judgeResult.rawJudgeOutput,
+			judgeDurationMs: judgeResult.durationMs,
+			judgeTokenUsage: judgeResult.tokenUsage,
 		};
 	}
 
@@ -286,16 +297,19 @@ export class BenchmarkRunner extends EventEmitter {
 	): Promise<{
 		success: boolean;
 		reason: string;
-		tokensUsed: number;
+		tokenUsage: TokenUsage;
+		durationMs: number;
 		rawJudgeOutput: unknown;
 	}> {
-		// for some reason, OpenRouter's structured out generation is a little weird, especially on low tier models.
+		// Some providers have difficulty with structured output generation especially on low tier models.
+		// So just in case you're using one of those providers, we try and force the model to provide a JSON object.
 		const judgePrompt = `TASK: Evaluate if the model's response correctly answers the given prompt. YOU MUST RESPOND WITH A JSON OBJECT CONTAINING:
 
 		INSTRUCTIONS:
         1. Consider accuracy, completeness, and relevance.
         2. If an expected answer is provided, check if the response aligns with it (exact wording is not required).
 		3. Your response must be a valid JSON object. Nothing else is acceptable.
+		4. Keep your response concise and to the point.
 
         You must respond with a JSON object containing:
         - "success": boolean (true if the response is correct/acceptable, false otherwise)
@@ -310,6 +324,8 @@ export class BenchmarkRunner extends EventEmitter {
         ${response}
 		
 		GIVEN THE ABOVE, RESPOND WITH A VALID JSON OBJECT`;
+
+		const judgeStartTime = Date.now();
 
 		try {
 			const judgeResponse = await generateObject({
@@ -326,27 +342,40 @@ export class BenchmarkRunner extends EventEmitter {
 				abortSignal: AbortSignal.timeout(this.timeoutSeconds * 1000),
 			});
 
+			const judgeDurationMs = Date.now() - judgeStartTime;
+
 			const judgeResult = judgeResponse.object as {
 				success: boolean;
 				reason: string;
 			};
 
+			const inputTokens = judgeResponse.usage?.promptTokens ?? 0;
+			const outputTokens = judgeResponse.usage?.completionTokens ?? 0;
+			const totalTokens = judgeResponse.usage?.totalTokens ?? 0;
+			const reasoningTokens = totalTokens - inputTokens - outputTokens;
+
 			return {
 				success: judgeResult.success,
 				reason: judgeResult.reason,
-				tokensUsed:
-					(judgeResponse.usage?.promptTokens ?? 0) +
-					(judgeResponse.usage?.completionTokens ?? 0),
+				tokenUsage: {
+					input: inputTokens,
+					output: outputTokens,
+					reasoning: reasoningTokens,
+					total: totalTokens,
+				},
+				durationMs: judgeDurationMs,
 				rawJudgeOutput: judgeResult,
 			};
 		} catch (error) {
 			console.error("Judge evaluation failed:", error);
+			const judgeDurationMs = Date.now() - judgeStartTime;
 
 			// Fallback if judge fails
 			return {
 				success: false,
 				reason: `Judge evaluation failed: ${error instanceof Error ? error.message : String(error)}`,
-				tokensUsed: 0,
+				tokenUsage: { input: 0, output: 0, reasoning: 0, total: 0 },
+				durationMs: judgeDurationMs,
 				rawJudgeOutput: null,
 			};
 		}
@@ -369,12 +398,16 @@ export class BenchmarkRunner extends EventEmitter {
 		} as unknown as Parameters<typeof generateObject>[0]);
 
 		const durationMs = Date.now() - startTime;
+		const inputTokens = response.usage?.promptTokens ?? 0;
+		const outputTokens = response.usage?.completionTokens ?? 0;
+		const totalTokens = response.usage?.totalTokens ?? 0;
+		const reasoningTokens = totalTokens - inputTokens - outputTokens;
+
 		const tokenUsage: TokenUsage = {
-			input: response.usage?.promptTokens ?? 0,
-			output: response.usage?.completionTokens ?? 0,
-			total:
-				(response.usage?.promptTokens ?? 0) +
-				(response.usage?.completionTokens ?? 0),
+			input: inputTokens,
+			output: outputTokens,
+			total: totalTokens,
+			reasoning: reasoningTokens,
 		};
 
 		// Validate the response
@@ -386,6 +419,8 @@ export class BenchmarkRunner extends EventEmitter {
 			modelName: model.name,
 			runIndex,
 			timestamp: new Date().toISOString(),
+			type: "structured-output",
+			prompt: test.prompt,
 			success: validationResult.success,
 			reason: validationResult.reason,
 			durationMs,

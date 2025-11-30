@@ -20,17 +20,16 @@ const openrouter = createOpenRouter({
 // can be considered `correct` based on the expected answer.
 //
 // Note, that the model must have the ability to generate structured outputs.
-// We recommend using GPT-OSS 20B — it's fast, cheap and works
-
+// Some providers have difficulty with structured output generation especially on low tier models.
+// You can go to your OpenRouter settings and manually control which providers to use or exclude.
+//
+// We recommend using GPT-OSS 20B from Groq since it's cheap, reliable and really fast.
+// But we can't force Groq as a provider so Gemini it is.
 export const judgeModel: BenchmarkModel = {
-	name: "openai/gpt-oss-20b",
-	llm: openrouter("openai/gpt-oss-20b"),
-	providerOptions: {
-		openrouter: {
-			// some providers have broken structured output generation. But Groq works and is super fast.
-			order: ["groq", "Groq"],
-		},
-	},
+	name: "google/gemini-2.5-flash-lite",
+	llm: openrouter("google/gemini-2.5-flash-lite", {
+		reasoning: { exclude: false, effort: "low" },
+	}),
 };
 
 // =============================================================================
@@ -42,6 +41,20 @@ export const judgeModel: BenchmarkModel = {
 export const models: BenchmarkModel[] = [
 	{
 		name: "xAI: Grok Code Fast 1",
-		llm: openrouter("x-ai/grok-code-fast-1"),
+		llm: openrouter("x-ai/grok-code-fast-1", {
+			reasoning: { exclude: false, effort: "low" },
+		}),
+	},
+	{
+		name: "Google: Gemini 2.5 Flash",
+		llm: openrouter("google/gemini-2.5-flash", {
+			reasoning: { exclude: false, effort: "low" },
+		}),
+	},
+	{
+		name: "Z.AI: GLM 4.6",
+		llm: openrouter("z-ai/glm-4.6", {
+			reasoning: { exclude: false, effort: "low" },
+		}),
 	},
 ];

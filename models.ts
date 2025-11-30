@@ -28,7 +28,7 @@ export const judgeModel: BenchmarkModel = {
 	providerOptions: {
 		openrouter: {
 			// some providers have broken structured output generation. But Groq works and is super fast.
-			order: ["groq"],
+			order: ["groq", "Groq"],
 		},
 	},
 };
@@ -41,7 +41,7 @@ export const judgeModel: BenchmarkModel = {
 
 export const models: BenchmarkModel[] = [
 	{
-		name: "openai/gpt-5-nano",
-		llm: openrouter("openai/gpt-5-nano"),
+		name: "xAI: Grok Code Fast 1",
+		llm: openrouter("x-ai/grok-code-fast-1"),
 	},
 ];

@@ -8,6 +8,7 @@ import { render } from "ink";
 import type { JSONValue, LanguageModelV1 } from "ai";
 import { generateObject } from "ai";
 import { DEFAULT_BENCHMARK, DEFAULT_CONCURRENCY, DEFAULT_TEST_RUNS_PER_MODEL, DEFAULT_TIMEOUT_SECONDS, RUNS_DIRECTORY } from "./constants.ts";
+import { models as configuredModels } from "./models.ts";
 
 const EnvSchema = z.object({
 	OPENROUTER_API_KEY: z
@@ -213,38 +214,27 @@ async function loadBenchmark(benchmarkPath: string): Promise<Benchmark> {
 	return benchmark;
 }
 
-async function loadModels(modelName?: string): Promise<BenchmarkModel[]> {
-	const modelsPath = resolve(process.cwd(), "models.ts");
-
-	if (!existsSync(modelsPath)) {
-		throw new Error(`Models file not found: ${modelsPath}`);
+function loadModels(modelName?: string): BenchmarkModel[] {
+	if (configuredModels.length === 0) {
+		throw new Error("No models configured in models.ts");
 	}
 
-	const module = await import(modelsPath);
-
-	// If a specific model is requested, find it
+	// If a specific model is requested, filter by name
 	if (modelName) {
-		const model = module[modelName] || module.default;
+		const model = configuredModels.find((m) => m.name === modelName);
+
 		if (!model) {
-			throw new Error(`Model '${modelName}' not found in models.ts`);
+			const availableModels = configuredModels.map((m) => m.name).join(", ");
+
+			throw new Error(
+				`Model '${modelName}' not found. Available models: ${availableModels}`,
+			);
 		}
+
 		return [model];
 	}
 
-	// Otherwise, use the default exported models array or single model
-	if (Array.isArray(module.models)) {
-		return module.models;
-	}
-
-	if (module.textModel) {
-		return [module.textModel];
-	}
-
-	if (module.default) {
-		return Array.isArray(module.default) ? module.default : [module.default];
-	}
-
-	throw new Error("No models found in models.ts");
+	return configuredModels;
 }
 
 /**
@@ -335,7 +325,7 @@ async function main() {
 
 				// Load benchmark and models (silent - UI will display info)
 				const benchmark = await loadBenchmark(parsedOptions.benchmark);
-				const models = await loadModels(parsedOptions.model);
+				const models = loadModels(parsedOptions.model);
 
 				// Verify judge model supports object generation before starting
 				await verifyJudgeModelCapability(benchmark.judgeModel);

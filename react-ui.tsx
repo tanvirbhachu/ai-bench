@@ -29,11 +29,11 @@ function useTerminalWidth(): number {
 const Header: React.FC<{
     benchmarkName: string;
     modelsCount: number;
-    totalTests: number;
+    totalRuns: number;
     runsPerTest: number;
     parallelLimit: number;
     terminalWidth: number;
-}> = ({ benchmarkName, modelsCount, totalTests, runsPerTest, parallelLimit, terminalWidth }) => {
+}> = ({ benchmarkName, modelsCount, totalRuns, runsPerTest, parallelLimit, terminalWidth }) => {
     const separatorWidth = Math.min(terminalWidth, 100);
 
     return (
@@ -63,7 +63,7 @@ const Header: React.FC<{
                 <Text>
                     <Text dimColor>Models:</Text> {modelsCount}
                     {"  "}
-                    <Text dimColor>Tests:</Text> {totalTests}
+                    <Text dimColor>Total Runs:</Text> {totalRuns}
                     {"  "}
                     <Text dimColor>Runs/Test:</Text> {runsPerTest}
                     {"  "}
@@ -459,7 +459,7 @@ export const BenchmarkApp: React.FC<{
             <Header
                 benchmarkName={state.benchmarkName}
                 modelsCount={state.modelsCount}
-                totalTests={state.totalTests}
+                totalRuns={state.totalTests * state.runsPerTest}
                 runsPerTest={state.runsPerTest}
                 parallelLimit={state.parallelLimit}
                 terminalWidth={terminalWidth}

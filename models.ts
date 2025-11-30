@@ -18,11 +18,19 @@ const openrouter = createOpenRouter({
 // This model is used to evaluate text responses from models. It's recommended that
 // you use a fairly light and fast model, as it's only checking whether the response
 // can be considered `correct` based on the expected answer.
+//
+// Note, that the model must have the ability to generate structured outputs.
+// We recommend using GPT-OSS 20B — it's fast, cheap and works
 
 export const judgeModel: BenchmarkModel = {
-	name: "openai/gpt-oss-20b:free",
-	llm: openrouter("openai/gpt-oss-20b:free"),
-	reasoning: false,
+	name: "openai/gpt-oss-20b",
+	llm: openrouter("openai/gpt-oss-20b"),
+	providerOptions: {
+		openrouter: {
+			// some providers have broken structured output generation. But Groq works and is super fast.
+			order: ["groq"],
+		},
+	},
 };
 
 // =============================================================================
@@ -35,6 +43,5 @@ export const models: BenchmarkModel[] = [
 	{
 		name: "openai/gpt-5-nano",
 		llm: openrouter("openai/gpt-5-nano"),
-		reasoning: true,
 	},
 ];

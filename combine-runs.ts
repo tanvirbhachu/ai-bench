@@ -9,9 +9,7 @@ import { readdir, readFile, writeFile, mkdir } from "fs/promises";
 import { join, resolve } from "path";
 import { existsSync } from "fs";
 import { RunResultSchema, type RunResult } from "./index.tsx";
-
-// Results directory where summaries are saved
-const RESULTS_DIR = "results";
+import { OUTPUT_DIRECTORY, RUNS_DIRECTORY } from "./constants.ts";
 
 export type TestSummary = {
 	testName: string;
@@ -300,7 +298,7 @@ export async function combineRunDir(
 	};
 
 	// Ensure results directory exists
-	const resultsDir = resolve(process.cwd(), RESULTS_DIR);
+	const resultsDir = resolve(process.cwd(), OUTPUT_DIRECTORY);
 	await mkdir(resultsDir, { recursive: true });
 
 	// Determine output filename
@@ -407,13 +405,9 @@ export async function combineAllRuns(
 	);
 }
 
-// =============================================================================
-// Standalone CLI Support
-// =============================================================================
-
-// Run if executed directly
+// Only run if executed directly
 if (import.meta.main) {
-	const runsDir = process.argv[2] ?? "runs";
+	const runsDir = process.argv[2] ?? RUNS_DIRECTORY;
 	const outputFilename = process.argv[3]; // Optional output filename
 	console.log(`🔄 Combining runs from: ${runsDir}`);
 

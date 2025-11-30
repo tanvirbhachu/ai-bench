@@ -80,6 +80,7 @@ export class BenchmarkRunner extends EventEmitter {
 	private benchmarkName: string;
 	private runTimestamp: string;
 	private runDir: string;
+	private timeoutSeconds: number;
 	private results: RunResult[] = [];
 
 	constructor(config: {
@@ -89,6 +90,7 @@ export class BenchmarkRunner extends EventEmitter {
 		parallelLimit: number;
 		outputDir: string;
 		benchmarkName: string;
+		timeoutSeconds: number;
 	}) {
 		super();
 		this.models = config.models;
@@ -97,6 +99,7 @@ export class BenchmarkRunner extends EventEmitter {
 		this.parallelLimit = config.parallelLimit;
 		this.outputDir = config.outputDir;
 		this.benchmarkName = config.benchmarkName;
+		this.timeoutSeconds = config.timeoutSeconds;
 		// Generate timestamp at construction time (shared across all runs in this session)
 		this.runTimestamp = new Date().toISOString().replace(/[:.]/g, "-");
 		// Build the run directory path: runs/{benchmark}-{timestamp}
@@ -237,6 +240,10 @@ export class BenchmarkRunner extends EventEmitter {
 		const response = await generateText({
 			model: model.llm,
 			prompt: test.prompt,
+			providerOptions: model.providerOptions
+				? { openrouter: model.providerOptions }
+				: undefined,
+			abortSignal: AbortSignal.timeout(this.timeoutSeconds * 1000),
 		});
 
 		const durationMs = Date.now() - startTime;
@@ -282,9 +289,17 @@ export class BenchmarkRunner extends EventEmitter {
 		tokensUsed: number;
 		rawJudgeOutput: unknown;
 	}> {
-		const judgePrompt = `You are an expert judge evaluating an AI model's response. 
+		// for some reason, OpenRouter's structured out generation is a little weird, especially on low tier models.
+		const judgePrompt = `TASK: Evaluate if the model's response correctly answers the given prompt. YOU MUST RESPOND WITH A JSON OBJECT CONTAINING:
 
-        TASK: Evaluate if the model's response correctly answers the given prompt.
+		INSTRUCTIONS:
+        1. Consider accuracy, completeness, and relevance.
+        2. If an expected answer is provided, check if the response aligns with it (exact wording is not required).
+		3. Your response must be a valid JSON object. Nothing else is acceptable.
+
+        You must respond with a JSON object containing:
+        - "success": boolean (true if the response is correct/acceptable, false otherwise)
+        - "reason": string (brief explanation of your judgment)
 
         PROMPT GIVEN TO MODEL:
         ${test.prompt}
@@ -293,15 +308,8 @@ export class BenchmarkRunner extends EventEmitter {
 
         MODEL'S RESPONSE:
         ${response}
-
-        INSTRUCTIONS:
-        1. Think step-by-step about whether the response correctly addresses the prompt.
-        2. Consider accuracy, completeness, and relevance.
-        3. If an expected answer is provided, check if the response aligns with it (exact wording is not required).
-
-        Respond with a JSON object containing:
-        - "success": boolean (true if the response is correct/acceptable, false otherwise)
-        - "reason": string (brief explanation of your judgment)`;
+		
+		GIVEN THE ABOVE, RESPOND WITH A VALID JSON OBJECT`;
 
 		try {
 			const judgeResponse = await generateObject({
@@ -310,7 +318,12 @@ export class BenchmarkRunner extends EventEmitter {
 					success: z.boolean(),
 					reason: z.string(),
 				}),
+				output: "object",
+				providerOptions: this.benchmark.judgeModel.providerOptions
+					? { openrouter: this.benchmark.judgeModel.providerOptions }
+					: undefined,
 				prompt: judgePrompt,
+				abortSignal: AbortSignal.timeout(this.timeoutSeconds * 1000),
 			});
 
 			const judgeResult = judgeResponse.object as {
@@ -349,6 +362,10 @@ export class BenchmarkRunner extends EventEmitter {
 			model: model.llm,
 			schema: test.schema,
 			prompt: test.prompt,
+			providerOptions: model.providerOptions
+				? { openrouter: model.providerOptions }
+				: undefined,
+			abortSignal: AbortSignal.timeout(this.timeoutSeconds * 1000),
 		} as unknown as Parameters<typeof generateObject>[0]);
 
 		const durationMs = Date.now() - startTime;

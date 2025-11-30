@@ -5,7 +5,9 @@ import { cac } from "cac";
 import { BenchmarkRunner } from "./persistence.ts";
 import { BenchmarkApp } from "./react-ui.tsx";
 import { render } from "ink";
-import type { LanguageModelV1 } from "ai";
+import type { JSONValue, LanguageModelV1 } from "ai";
+import { generateObject } from "ai";
+import { DEFAULT_BENCHMARK, DEFAULT_CONCURRENCY, DEFAULT_TEST_RUNS_PER_MODEL, DEFAULT_TIMEOUT_SECONDS, RUNS_DIRECTORY } from "./constants.ts";
 
 const EnvSchema = z.object({
 	OPENROUTER_API_KEY: z
@@ -31,7 +33,7 @@ function validateEnv(): { OPENROUTER_API_KEY: string } {
 export type BenchmarkModel = {
 	name: string;
 	llm: LanguageModelV1;
-	providerOptions?: Record<string, unknown>;
+	providerOptions?: Record<string, JSONValue>;
 	reasoning?: boolean;
 };
 
@@ -121,13 +123,14 @@ export const RunResultSchema = z.object({
  * CLI options schema
  */
 export const CLIOptionsSchema = z.object({
-	benchmark: z.string().default("sample-text-benchmark.ts"),
-	runs: z.coerce.number().int().positive().default(1),
-	parallel: z.coerce.number().int().positive().default(1),
+	benchmark: z.string().default(DEFAULT_BENCHMARK),
+	runs: z.coerce.number().int().positive().default(DEFAULT_TEST_RUNS_PER_MODEL),
+	parallel: z.coerce.number().int().positive().default(DEFAULT_CONCURRENCY),
 	model: z.string().optional(),
-	outputDir: z.string().default("runs"),
+	outputDir: z.string().default(RUNS_DIRECTORY),
 	combineOnly: z.boolean().default(false),
 	output: z.string().optional(), // Custom output filename for the summary
+	timeout: z.coerce.number().int().positive().default(DEFAULT_TIMEOUT_SECONDS), // Timeout in seconds for each test
 });
 
 export type CLIOptions = z.infer<typeof CLIOptionsSchema>;
@@ -244,6 +247,36 @@ async function loadModels(modelName?: string): Promise<BenchmarkModel[]> {
 	throw new Error("No models found in models.ts");
 }
 
+/**
+ * Verifies that the judge model supports object generation
+ * by making a simple test call with a minimal schema
+ */
+async function verifyJudgeModelCapability(judgeModel: BenchmarkModel): Promise<void> {
+	console.log(`[CHECK] Verifying judge model '${judgeModel.name}' supports object generation...`);
+
+	const testSchema = z.object({
+		ready: z.boolean(),
+	});
+
+	try {
+		await generateObject({
+			model: judgeModel.llm,
+			schema: testSchema,
+			prompt: "Respond with ready: true",
+			providerOptions: judgeModel.providerOptions ? { openrouter: judgeModel.providerOptions } : undefined,
+			abortSignal: AbortSignal.timeout(30000), // 30 second timeout for capability check
+		});
+		console.log(`[OK] Judge model '${judgeModel.name}' supports object generation`);
+	} catch (error) {
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		throw new Error(
+			`Judge model '${judgeModel.name}' does not support object generation (required for judging text responses).\n` +
+			`Error: ${errorMessage}\n` +
+			`Please use a model that supports structured outputs as your judge model.`
+		);
+	}
+}
+
 async function main() {
 	// Validate environment
 	validateEnv();
@@ -254,15 +287,18 @@ async function main() {
 	cli
 		.command("[...args]", "Run benchmarks")
 		.option("-b, --benchmark <file>", "Benchmark file to run", {
-			default: "sample-text-benchmark.ts",
+			default: DEFAULT_BENCHMARK,
 		})
-		.option("-r, --runs <number>", "Number of runs per test", { default: 1 })
+		.option("-r, --runs <number>", "Number of runs per test", { default: DEFAULT_TEST_RUNS_PER_MODEL })
 		.option("-p, --parallel <number>", "Number of tests to run in parallel", {
-			default: 1,
+			default: DEFAULT_CONCURRENCY,
 		})
 		.option("-m, --model <name>", "Specific model to use from models.ts")
 		.option("-o, --output-dir <path>", "Output directory for run results", {
-			default: "runs",
+			default: RUNS_DIRECTORY,
+		})
+		.option("-t, --timeout <seconds>", "Timeout in seconds for each test", {
+			default: DEFAULT_TIMEOUT_SECONDS,
 		})
 		.option(
 			"--output <name>",
@@ -283,6 +319,7 @@ async function main() {
 					outputDir: options.outputDir,
 					combineOnly: options.combineOnly,
 					output: options.output,
+					timeout: options.timeout,
 				});
 
 				// Extract benchmark name from filename
@@ -300,6 +337,9 @@ async function main() {
 				const benchmark = await loadBenchmark(parsedOptions.benchmark);
 				const models = await loadModels(parsedOptions.model);
 
+				// Verify judge model supports object generation before starting
+				await verifyJudgeModelCapability(benchmark.judgeModel);
+
 				// Calculate total tests (tests * models)
 				const totalTests = benchmark.tests.length * models.length;
 
@@ -311,6 +351,7 @@ async function main() {
 					parallelLimit: parsedOptions.parallel,
 					outputDir: parsedOptions.outputDir,
 					benchmarkName,
+					timeoutSeconds: parsedOptions.timeout,
 				});
 
 				// Render the React Ink UI

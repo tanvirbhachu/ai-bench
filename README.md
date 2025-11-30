@@ -12,6 +12,8 @@ Well, thats what this is for. You define your models, define your tests and that
 
 - A benchmark is defined within a `.ts` file, which means you can create a benchmark and share it with anyone else.
 
+- Once you've finished running your tests, you can either make yourself some sort of visualization site using [v0](https://v0.app/) or if you haven't made any complex changes, use [this site I quickly made](https://ai-bench.tanvirbhachu.dev/) and just drop your results JSON file.
+
 ## Features
 
 - 🎯 **Type-Safe**: Full TypeScript with Zod validation for all inputs and outputs
